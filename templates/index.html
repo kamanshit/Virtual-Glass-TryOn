@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Virtual Try-On</title>
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #video { position: absolute; top: 0; left: 0; z-index: 1; }
+        canvas { position: absolute; top: 0; left: 0; z-index: 2; }
+    </style>
+</head>
+<body>
+
+<img id="video" src="{{ url_for('video_feed') }}" width="1280" height="720" />
+
+<script type="module">
+import * as THREE from "https://cdn.skypack.dev/three@0.129.0/build/three.module.js";
+import { GLTFLoader } from "https://cdn.skypack.dev/three@0.129.0/examples/jsm/loaders/GLTFLoader.js";
+
+let glasses;
+
+const VIDEO_WIDTH = 1280;
+const VIDEO_HEIGHT = 720;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, VIDEO_WIDTH / VIDEO_HEIGHT, 0.01, 10);
+camera.position.z = 1.5;
+
+const renderer = new THREE.WebGLRenderer({ alpha: true });
+renderer.setSize(VIDEO_WIDTH, VIDEO_HEIGHT);
+renderer.domElement.style.position = 'absolute';
+renderer.domElement.style.zIndex = 2;
+document.body.appendChild(renderer.domElement);
+
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(0, 1, 1);
+scene.add(light);
+
+// Load model
+const loader = new GLTFLoader();
+loader.load('/static/glasses.glb', (gltf) => {
+  glasses = gltf.scene;
+  glasses.scale.set(4.21, 4.21, 4.21); // fixed scale for now
+  glasses.position.set(0, 0, 0.1);  // fixed position
+  scene.add(glasses);
+  console.log("✅ Model loaded and added to scene");
+}, undefined, (err) => {
+  console.error("❌ Model load error:", err);
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+animate();
+
+// Debug position update
+async function fetchLandmarksAndUpdateModel() {
+  if (!glasses) return;
+
+  try {
+    const res = await fetch('/landmarks');
+    const data = await res.json();
+
+    if (data.left_eye_outer && data.right_eye_outer) {
+      const x1 = data.left_eye_outer.x;
+      const y1 = data.left_eye_outer.y;
+      const x2 = data.right_eye_outer.x;
+      const y2 = data.right_eye_outer.y;
+
+      const centerX = (x1 + x2) / 2;
+      const centerY = (y1 + y2) / 2;
+
+        const normX = (centerX / VIDEO_WIDTH - 0.75) * 2;
+        const normY = -(centerY / VIDEO_HEIGHT - 0.75) * 2;
+
+      
+
+
+      // 🚫 Disable scaling and rotation for now
+      glasses.position.set(normX, normY, 0.1);
+
+      console.log("🎯 Updating position only:", { normX, normY });
+
+    } else {
+      console.warn("⚠️ Landmarks missing:", data);
+    }
+
+  } catch (err) {
+    console.error("❌ Landmark fetch error:", err);
+  }
+}
+setInterval(fetchLandmarksAndUpdateModel, 200);
+</script>
+
+</body>
+</html>
